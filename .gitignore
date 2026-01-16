@@ -1,0 +1,20 @@
+# Node
+node_modules/
+dist/
+lib/
+
+# Firebase
+.firebase/
+.firebaserc
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Artifacts (generated)
+artifacts/
