@@ -33,15 +33,17 @@ function render(content: string) {
 
 const UI_CONTAINER = `
   <style>
-    .card-image-container:hover {
+    .interaction-layer:hover ~ .card-image-container {
       z-index: 5000;
     }
-    .card-image-container:hover .card-image {
+    .interaction-layer:hover ~ .card-image-container .card-image {
       transform: scale(1.75);
-      box-shadow: 0 0 25px rgba(0,0,0,0.9);
-      background: #1a1a1a;
-      border-radius: 10px;
+      box-shadow: 0 0 35px rgba(0,0,0,1);
       z-index: 5001;
+      border-radius: 10px;
+    }
+    .interaction-layer:hover {
+      z-index: 5002;
     }
   </style>
   <div id="ui-container" style="
@@ -88,7 +90,7 @@ const UI_CONTAINER = `
     padding: 20px;
     box-sizing: border-box;
     gap: 15px;
-    min-height: 100vh;
+    min-height: 450px;
   "></div>
 `;
 
@@ -263,7 +265,7 @@ function updateManaCurve(pickedCards: string[]) {
       const scoreNum = metrics ? scoreCard(metrics, ctx) : 0;
       const score = metrics ? scoreNum.toFixed(1) : "??";
       const wheels = metrics ? willWheel(metrics.ata, event.pick) : false; // Using ATA for wheeling if zAlsa is unreliable
-      const proGrade = metrics ? metrics.proScore.toFixed(1) : "-";
+      const proGrade = metrics && metrics.proScore !== -1 ? metrics.proScore.toFixed(1) : "N/A";
       const statsGih = metrics ? (metrics.zGih * 10).toFixed(0) : "-"; 
 
       // Color mapping for score
@@ -275,48 +277,48 @@ function updateManaCurve(pickedCards: string[]) {
       return `
         <div style="
           border: 2px solid ${wheels ? '#a020f0' : (metrics ? '#444' : '#ff0000')};
-          background: rgba(0, 0, 0, 0.9);
-          color: white;
+          background: #000;
           display: flex;
           flex-direction: column;
-          border-radius: 8px;
-          height: 430px; /* Further reduced to fit content perfectly */
+          border-radius: 10px;
+          height: 450px; 
           position: relative;
-          box-shadow: ${wheels ? '0 0 15px #a020f0' : '0 4px 8px rgba(0,0,0,0.5)'};
+          box-shadow: ${wheels ? '0 0 20px #a020f0' : '0 4px 12px rgba(0,0,0,0.5)'};
           overflow: hidden;
         ">
-          ${wheels ? '<div style="position: absolute; top: 0; right: 0; background: #a020f0; color: white; font-size: 0.5em; padding: 2px 4px; font-weight: bold; z-index: 10;">WHEEL</div>' : ''}
-          
-          <div style="background: rgba(255,255,255,0.05); text-align: center; padding: 5px; font-size: 1.8em; font-weight: bold; color: ${scoreColor};">
-            ${score}
+          <!-- Card Art Background -->
+          <div class="card-image-container" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 1;">
+             ${metrics?.url ? `<img src="${metrics.url}" class="card-image" style="width: 100%; height: 100%; object-fit: cover; transition: transform 0.1s ease;" />` : '<div style="width: 100%; height: 100%; background: #222;"></div>'}
           </div>
 
-          <div style="padding: 8px; font-size: 0.7em; flex-grow: 1; display: flex; flex-direction: column;">
-             <div style="font-weight: bold; color: #fff; margin-bottom: 4px; border-bottom: 1px solid #333; padding-bottom: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${name}">
-                ${name}
-             </div>
+          <!-- Overlay Elements -->
+          <div style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 2; pointer-events: none; display: flex; flex-direction: column; justify-content: space-between; background: linear-gradient(to bottom, rgba(0,0,0,0.4) 0%, transparent 20%, transparent 70%, rgba(0,0,0,0.8) 100%);">
+            
+            <!-- Top Bar: Score and Wheel -->
+            <div style="display: flex; justify-content: space-between; align-items: flex-start; padding: 8px;">
+               <div style="background: rgba(0,0,0,0.8); border: 2px solid ${scoreColor}; color: ${scoreColor}; padding: 4px 12px; border-radius: 6px; font-size: 2.2em; font-weight: 900; box-shadow: 0 0 10px rgba(0,0,0,0.5); text-shadow: 2px 2px 4px #000;">
+                 ${score}
+               </div>
+               ${wheels ? '<div style="background: #a020f0; color: white; font-size: 0.8em; padding: 4px 8px; font-weight: bold; border-radius: 4px; box-shadow: 0 0 10px #a020f0;">WHEEL</div>' : '<div></div>'}
+            </div>
 
-             <!-- Card Image -->
-             <div class="card-image-container" style="width: 100%; height: 290px; background: #222; margin-bottom: 8px; border-radius: 4px; display: flex; align-items: center; justify-content: center; position: relative;">
-                ${metrics?.url ? `<img src="${metrics.url}" class="card-image" style="width: 100%; height: 100%; object-fit: contain; transition: transform 0.1s ease; pointer-events: auto;" />` : '<span style="color: #444;">No Image</span>'}
-             </div>
-
-             <div style="display: flex; justify-content: space-between; margin-bottom: 2px;">
-                <span style="color: #aaa;">Pro Grade:</span>
-                <span style="color: #ddd;">${proGrade}</span>
-             </div>
-             <div style="display: flex; justify-content: space-between; margin-bottom: 2px;">
-                <span style="color: #aaa;">GIH Z-Score:</span>
-                <span style="color: #ddd;">${metrics ? metrics.zGih.toFixed(2) : '-'}</span>
-             </div>
-             <div style="display: flex; justify-content: space-between; margin-bottom: 2px;">
-                <span style="color: #aaa;">Best Pair:</span>
-                <span style="color: #adff2f; font-weight: bold;">${bestPair} (${bestWR.toFixed(0)}%)</span>
-             </div>
-             <div style="margin-top: 5px; font-size: 0.8em; color: #666; text-align: right;">
-                ID: ${id}
-             </div>
+            <!-- Bottom Bar: Name and Stats -->
+            <div style="padding: 10px; background: rgba(0,0,0,0.85); border-top: 1px solid rgba(255,255,255,0.1);">
+               <div style="font-weight: bold; color: #fff; margin-bottom: 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 1.1em;" title="${name}">
+                  ${name}
+               </div>
+               <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 4px; font-size: 0.75em;">
+                  <div style="color: #aaa;">PRO: <span style="color: #fff; font-weight: bold;">${proGrade}</span></div>
+                  <div style="color: #aaa;">GIH: <span style="color: #fff; font-weight: bold;">${metrics ? metrics.zGih.toFixed(2) : '-'}</span></div>
+                  <div style="color: #aaa; grid-column: span 2; border-top: 1px solid #444; margin-top: 2px; padding-top: 2px;">
+                    PAIR: <span style="color: #adff2f; font-weight: bold;">${bestPair} (${bestWR.toFixed(0)}%)</span>
+                  </div>
+               </div>
+            </div>
           </div>
+
+          <!-- Interaction Layer (Invisible but clickable) -->
+          <div class="interaction-layer" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 3; pointer-events: auto; cursor: help;"></div>
         </div>
       `;
     }).join('');

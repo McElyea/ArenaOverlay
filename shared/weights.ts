@@ -27,6 +27,12 @@ export function scoreCard(metrics: CardMetrics, ctx: DraftContext): number {
   // 40% 17Lands Stats, 30% Pro Opinion, 20% Color Pair Fit, 10% Scarcity
   let score = (0.4 * power17Lands) + (0.3 * normalizedPro) + (0.2 * colorPairBonus) + (0.1 * scarcity);
   
+  // If the data is new (0.0 score from 17lands), use ProScore as primary
+  if (score === 0 && metrics.proScore !== -1) {
+    // Map 0-5 scale to a similar -2.0 to 2.0 range for consistency
+    score = (metrics.proScore - 2.5) / 1.25;
+  }
+
   score *= metrics.confidence;
 
   // Synergy Logic

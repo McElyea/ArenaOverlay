@@ -6,7 +6,7 @@ import numpy as np
 import time
 from urllib.parse import quote
 
-SET_CODE = "TLA"
+SET_CODE = "ECL"
 FORMAT = "PremierDraft"
 BASE_URL = "https://www.17lands.com/card_ratings/data"
 COLOR_PAIRS = ["WU", "UB", "BR", "RG", "GW", "WB", "UR", "BG", "RW", "GU"]
@@ -66,16 +66,85 @@ def calculate_z_score(data_list):
         return [0.0] * len(data_list)
     return ((arr - mean) / std).tolist()
 
+def clip(val, min_val, max_val):
+    return max(min_val, min(val, max_val))
+
+CACHE_DIR = "python/cache"
+
+def get_cache_path(colors=None):
+    os.makedirs(CACHE_DIR, exist_ok=True)
+    suffix = f"_{colors}" if colors else "_all"
+    return os.path.join(CACHE_DIR, f"{SET_CODE}_{FORMAT}{suffix}.json")
+
+def fetch_json(url, cache_path=None, force=False):
+    if not force and cache_path and os.path.exists(cache_path):
+        # Check if cache is fresh (less than 8 hours old to support 3x daily update check)
+        mtime = os.path.getmtime(cache_path)
+        if (time.time() - mtime) < (8 * 3600):
+            print(f"Using fresh cache: {cache_path}")
+            with open(cache_path, "r") as f:
+                return json.load(f)
+
+    print(f"Fetching: {url}")
+    context = ssl.create_default_context()
+    req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+    try:
+        with urllib.request.urlopen(req, context=context) as response:
+            data = json.loads(response.read().decode())
+            if cache_path:
+                with open(cache_path, "w") as f:
+                    json.dump(data, f)
+            return data
+    except Exception as e:
+        print(f"Error fetching {url}: {e}")
+        return None
+
+def get_data_fingerprint(data):
+    """Calculate a fingerprint based on total seen counts to detect updates."""
+    if not data: return 0
+    return sum(c.get('seen_count', 0) or 0 for c in data)
+
 def analyze():
+    # 0. Load Pro Grade Overrides
+    pro_overrides = {}
+    override_path = "artifacts/pro_grades.json"
+    if os.path.exists(override_path):
+        try:
+            with open(override_path, "r") as f:
+                pro_overrides = json.load(f)
+            print(f"Loaded {len(pro_overrides)} pro grade overrides.")
+        except Exception as e:
+            print(f"Error loading pro overrides: {e}")
+
     # 1. Fetch metadata from Scryfall
     print("Fetching Scryfall metadata...")
     scryfall_map = fetch_scryfall_metadata(SET_CODE)
     
-    # 2. Fetch "All Decks" as the base
-    all_decks = fetch_json(f"{BASE_URL}?expansion={SET_CODE}&format={FORMAT}")
+    # 2. Fetch "All Decks" - This is our Canary fetch
+    canary_url = f"{BASE_URL}?expansion={SET_CODE}&format={FORMAT}"
+    cache_path_all = get_cache_path()
+    
+    # Load old cache to compare
+    old_data = None
+    if os.path.exists(cache_path_all):
+        with open(cache_path_all, "r") as f:
+            old_data = json.load(f)
+    
+    # Always fetch fresh canary data to see if 17Lands updated
+    all_decks = fetch_json(canary_url, cache_path=cache_path_all, force=True)
     if not all_decks:
         print("Failed to fetch base data. Exiting.")
         return
+
+    # Compare fingerprints
+    old_fp = get_data_fingerprint(old_data)
+    new_fp = get_data_fingerprint(all_decks)
+    
+    needs_update = (old_fp != new_fp)
+    if not needs_update:
+        print(f"Data fingerprint matches ({new_fp}). Skipping color pair fetches.")
+    else:
+        print(f"Data update detected! Fingerprint: {old_fp} -> {new_fp}")
 
     # Extract base metrics for Z-scoring
     gih_wrs = [c.get('ever_drawn_win_rate', 0) or 0 for c in all_decks]
@@ -98,6 +167,9 @@ def analyze():
         
         card_colors = list(card.get('color', ''))
         
+        # Use strict Pro Grade from override list, otherwise mark as N/A (-1)
+        strict_pro_score = pro_overrides.get(card['name'], -1.0)
+
         artifact[mid] = {
             "name": card['name'],
             "rarity": card.get('rarity', 'common'),
@@ -111,7 +183,7 @@ def analyze():
             "cmc": meta.get('cmc', 0),
             "types": meta.get('types', card.get('types', [])),
             "mechanics": [],
-            "proScore": 3.0, # Placeholder
+            "proScore": strict_pro_score,
             "ohwr": (card.get('opening_hand_win_rate', 0.5) or 0.5 - 0.5) * 10,
             "gpwr": (card.get('win_rate', 0.5) or 0.5 - 0.5) * 10,
             "ata": card.get('avg_pick', 8) or 8,
@@ -120,14 +192,21 @@ def analyze():
 
     # 3. Fetch each color pair to populate colorPairScores
     for cp in COLOR_PAIRS:
-        time.sleep(1)
-        cp_data = fetch_json(f"{BASE_URL}?expansion={SET_CODE}&format={FORMAT}&colors={cp}")
+        cp_cache_path = get_cache_path(cp)
+        # Use cache if fingerprint matched, otherwise force a fetch if we are in update mode
+        cp_data = fetch_json(f"{BASE_URL}?expansion={SET_CODE}&format={FORMAT}&colors={cp}", 
+                            cache_path=cp_cache_path, 
+                            force=needs_update)
+        
         if not cp_data: continue
         for card in cp_data:
             mid = str(card['mtga_id'])
             if mid in artifact:
                 wr = card.get('ever_drawn_win_rate', 0) or 0
                 artifact[mid]["colorPairScores"][cp] = wr * 100
+        
+        if needs_update:
+            time.sleep(1) # Only throttle if we are actually hitting the network
 
     # Ensure artifacts directory exists
     os.makedirs("artifacts", exist_ok=True)

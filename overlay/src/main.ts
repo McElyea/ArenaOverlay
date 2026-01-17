@@ -4,6 +4,9 @@ import * as fs from "fs";
 import { exec } from "child_process";
 import { LogMonitor } from "./logMonitor";
 
+// Suppress Autofill console errors in DevTools
+app.commandLine.appendSwitch('disable-features', 'Autofill');
+
 function generateRandomPack(setName: string) {
   const artifactPath = path.join(__dirname, "../../artifacts", `cards_${setName}.json`);
   if (!fs.existsSync(artifactPath)) return [];
@@ -99,7 +102,7 @@ function createWindow() {
       mockEvent = {
         expansion: "ECL",
         pick: 1,
-        pack: ["98567", "98885", ...generateRandomPack("ECL").slice(0, 12)],
+        pack: generateRandomPack("ECL"),
         pickedCards: []
       };
     } else {
