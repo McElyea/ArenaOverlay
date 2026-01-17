@@ -6,7 +6,7 @@ import numpy as np
 import time
 from urllib.parse import quote
 
-SET_CODE = "ECL"
+SET_CODE = "TLA"
 FORMAT = "PremierDraft"
 BASE_URL = "https://www.17lands.com/card_ratings/data"
 COLOR_PAIRS = ["WU", "UB", "BR", "RG", "GW", "WB", "UR", "BG", "RW", "GU"]
@@ -21,6 +21,33 @@ def fetch_json(url):
     except Exception as e:
         print(f"Error fetching {url}: {e}")
         return None
+
+def fetch_mtgjson_metadata(set_code):
+    url = f"https://mtgjson.com/api/v5/{set_code.upper()}.json"
+    cache_path = os.path.join(CACHE_DIR, f"mtgjson_{set_code.upper()}.json")
+    
+    data = fetch_json(url, cache_path=cache_path)
+    if not data:
+        print(f"MTGJSON for {set_code} not found, falling back to Scryfall...")
+        return fetch_scryfall_metadata(set_code)
+    
+    # Map by identifiers.arenaId
+    metadata = {}
+    cards = data.get('data', {}).get('cards', [])
+    for card in cards:
+        arena_id = card.get('identifiers', {}).get('arenaId')
+        if arena_id:
+            metadata[str(arena_id)] = {
+                "cmc": int(card.get('manaValue', 0)),
+                "types": card.get('types', []),
+                "mana_cost": card.get('manaCost', ''),
+                "colors": card.get('colors', []),
+                "rarity": card.get('rarity', 'common'),
+                "name": card.get('name', ''),
+                # Store full MTGJSON object for future expansion
+                "mtgjson": card 
+            }
+    return metadata
 
 def fetch_scryfall_metadata(set_code):
     url = f"https://api.scryfall.com/cards/search?q=set%3A{set_code.lower()}+is%3Abooster"
@@ -105,20 +132,9 @@ def get_data_fingerprint(data):
     return sum(c.get('seen_count', 0) or 0 for c in data)
 
 def analyze():
-    # 0. Load Pro Grade Overrides
-    pro_overrides = {}
-    override_path = "artifacts/pro_grades.json"
-    if os.path.exists(override_path):
-        try:
-            with open(override_path, "r") as f:
-                pro_overrides = json.load(f)
-            print(f"Loaded {len(pro_overrides)} pro grade overrides.")
-        except Exception as e:
-            print(f"Error loading pro overrides: {e}")
-
-    # 1. Fetch metadata from Scryfall
-    print("Fetching Scryfall metadata...")
-    scryfall_map = fetch_scryfall_metadata(SET_CODE)
+    # 1. Fetch metadata (MTGJSON preferred, Scryfall fallback)
+    print(f"Fetching metadata for {SET_CODE}...")
+    metadata_map = fetch_mtgjson_metadata(SET_CODE)
     
     # 2. Fetch "All Decks" - This is our Canary fetch
     canary_url = f"{BASE_URL}?expansion={SET_CODE}&format={FORMAT}"
@@ -160,34 +176,32 @@ def analyze():
     # Initialize artifact with base data
     for i, card in enumerate(all_decks):
         mid = str(card['mtga_id'])
-        meta = scryfall_map.get(mid, {})
+        meta = metadata_map.get(mid, {})
         
         games = card.get('ever_drawn_game_count', 0) or 0
         confidence = min(1.0, np.log10(games + 1) / 4.0) if games > 0 else 0
         
-        card_colors = list(card.get('color', ''))
-        
-        # Use strict Pro Grade from override list, otherwise mark as N/A (-1)
-        strict_pro_score = pro_overrides.get(card['name'], -1.0)
-
         artifact[mid] = {
-            "name": card['name'],
-            "rarity": card.get('rarity', 'common'),
+            "name": meta.get('name', card['name']),
+            "rarity": meta.get('rarity', card.get('rarity', 'common')).lower(),
             "url": card.get('url', ''), # 17Lands image URL
             "zGih": z_gih[i],
             "zIwd": z_iwd[i],
             "zAlsa": z_alsa[i],
             "confidence": confidence,
             "gamesPlayed": games,
-            "colors": card_colors,
+            "colors": meta.get('colors', list(card.get('color', ''))),
             "cmc": meta.get('cmc', 0),
             "types": meta.get('types', card.get('types', [])),
-            "mechanics": [],
-            "proScore": strict_pro_score,
+            "mechanics": meta.get('mtgjson', {}).get('mechanics', []),
             "ohwr": (card.get('opening_hand_win_rate', 0.5) or 0.5 - 0.5) * 10,
             "gpwr": (card.get('win_rate', 0.5) or 0.5 - 0.5) * 10,
             "ata": card.get('avg_pick', 8) or 8,
-            "colorPairScores": {}
+            "colorPairScores": {},
+            # Standardized MTGJSON fields
+            "manaCost": meta.get('mana_cost', ''),
+            "manaValue": meta.get('cmc', 0),
+            "key": meta.get('mtgjson', {}).get('uuid', mid)
         }
 
     # 3. Fetch each color pair to populate colorPairScores

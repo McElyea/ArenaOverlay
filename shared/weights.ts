@@ -10,29 +10,20 @@ export function scoreCard(metrics: CardMetrics, ctx: DraftContext): number {
   // Weights: GIH (50%), OHWR (30%), GPWR (20%)
   const power17Lands = (0.5 * adjustedGih) + (0.3 * metrics.ohwr) + (0.2 * metrics.gpwr);
 
-  // 3. Pro Score Integration (Normalize 0-5 scale to roughly -2.0 to 2.0 Z-score space)
-  const normalizedPro = (metrics.proScore - 2.5) / 1.25;
-
-  // 4. Color Pair Specific Logic
+  // 3. Archetype specific bonus
   let colorPairBonus = 0;
   if (ctx.activeColorPair && metrics.colorPairScores[ctx.activeColorPair]) {
     // If we are in a specific archetype, prioritize that pair's win rate
     colorPairBonus = (metrics.colorPairScores[ctx.activeColorPair] - 50) / 10; // Simple normalization
   }
 
-  // 5. Scarcity (ALSA)
+  // 4. Scarcity (ALSA)
   const scarcity = -0.3 * metrics.zAlsa;
 
   // Final Weighted Composition
-  // 40% 17Lands Stats, 30% Pro Opinion, 20% Color Pair Fit, 10% Scarcity
-  let score = (0.4 * power17Lands) + (0.3 * normalizedPro) + (0.2 * colorPairBonus) + (0.1 * scarcity);
+  // 60% 17Lands Stats, 30% Color Pair Fit, 10% Scarcity
+  let score = (0.6 * power17Lands) + (0.3 * colorPairBonus) + (0.1 * scarcity);
   
-  // If the data is new (0.0 score from 17lands), use ProScore as primary
-  if (score === 0 && metrics.proScore !== -1) {
-    // Map 0-5 scale to a similar -2.0 to 2.0 range for consistency
-    score = (metrics.proScore - 2.5) / 1.25;
-  }
-
   score *= metrics.confidence;
 
   // Synergy Logic

@@ -265,7 +265,6 @@ function updateManaCurve(pickedCards: string[]) {
       const scoreNum = metrics ? scoreCard(metrics, ctx) : 0;
       const score = metrics ? scoreNum.toFixed(1) : "??";
       const wheels = metrics ? willWheel(metrics.ata, event.pick) : false; // Using ATA for wheeling if zAlsa is unreliable
-      const proGrade = metrics && metrics.proScore !== -1 ? metrics.proScore.toFixed(1) : "N/A";
       const statsGih = metrics ? (metrics.zGih * 10).toFixed(0) : "-"; 
 
       // Color mapping for score
@@ -308,8 +307,8 @@ function updateManaCurve(pickedCards: string[]) {
                   ${name}
                </div>
                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 4px; font-size: 0.75em;">
-                  <div style="color: #aaa;">PRO: <span style="color: #fff; font-weight: bold;">${proGrade}</span></div>
-                  <div style="color: #aaa;">GIH: <span style="color: #fff; font-weight: bold;">${metrics ? metrics.zGih.toFixed(2) : '-'}</span></div>
+                  <div style="color: #aaa;">GIH Z: <span style="color: #fff; font-weight: bold;">${metrics ? metrics.zGih.toFixed(2) : '-'}</span></div>
+                  <div style="color: #aaa;">ATA: <span style="color: #fff; font-weight: bold;">${metrics ? metrics.ata.toFixed(1) : '-'}</span></div>
                   <div style="color: #aaa; grid-column: span 2; border-top: 1px solid #444; margin-top: 2px; padding-top: 2px;">
                     PAIR: <span style="color: #adff2f; font-weight: bold;">${bestPair} (${bestWR.toFixed(0)}%)</span>
                   </div>

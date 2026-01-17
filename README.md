@@ -12,10 +12,8 @@ This project is built on a "TypeScript as Truth" philosophy, ensuring that all p
 
 ## Key Features
 
-- **Expert Integration:** Pro Grades are strictly mapped from authoritative sources (like ChannelFireball and LSV). If a card hasn't been reviewed, it defaults to `N/A`.
 - **Intelligent Scoring:** 
-    - Weighted composition of 17Lands stats (GIHWR, OHWR, GPWR) and expert opinions.
-    - **Pro Score Fallback:** On set release day (before 17Lands data exists), the system automatically elevates Pro Grades to the primary score.
+    - Weighted composition of 17Lands stats (GIHWR, OHWR, GPWR).
 - **Advanced UI/UX:**
     - **Hover Zoom:** Cards scale to 175% on hover for clear art and text reading.
     - **Smart Sorting:** Packs are automatically sorted by Rarity (Mythic > Rare > etc.) and then by Score.
