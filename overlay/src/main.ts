@@ -1,21 +1,54 @@
 import { app, BrowserWindow, screen, ipcMain } from "electron";
 import * as path from "path";
 import * as fs from "fs";
+import { exec } from "child_process";
 import { LogMonitor } from "./logMonitor";
 
-function createWindow() {
-  const primaryDisplay = screen.getPrimaryDisplay();
-  const { width, height } = primaryDisplay.workAreaSize;
+function generateRandomPack(setName: string) {
+  const artifactPath = path.join(__dirname, "../../artifacts", `cards_${setName}.json`);
+  if (!fs.existsSync(artifactPath)) return [];
+  
+  const cards = JSON.parse(fs.readFileSync(artifactPath, "utf-8"));
+  const buckets: Record<string, string[]> = { common: [], uncommon: [], rare: [], mythic: [] };
+  
+  Object.entries(cards).forEach(([id, data]: [string, any]) => {
+    const r = (data.rarity || "common").toLowerCase();
+    if (buckets[r]) buckets[r].push(id);
+    else buckets.common.push(id);
+  });
 
+  const pick = (rarity: string, count: number) => {
+    const list = buckets[rarity];
+    const result = [];
+    for(let i=0; i<count && list.length > 0; i++) {
+      const idx = Math.floor(Math.random() * list.length);
+      result.push(list[idx]);
+    }
+    return result;
+  };
+
+  const pack = [];
+  // 1 Rare/Mythic
+  if (Math.random() < 0.14) pack.push(...pick("mythic", 1));
+  else pack.push(...pick("rare", 1));
+  
+  // 3 Uncommons
+  pack.push(...pick("uncommon", 3));
+  
+  // 10 Commons (filling to 14 cards)
+  pack.push(...pick("common", 10));
+
+  // Shuffle
+  return pack.sort(() => Math.random() - 0.5);
+}
+
+function createWindow() {
   const mainWindow = new BrowserWindow({
-    width: width,
-    height: height,
-    x: 0,
-    y: 0,
-    frame: false,
-    transparent: true,
+    width: 1200,
+    height: 800,
+    frame: true,       // Add frame so you can move/resize it
+    transparent: false, // Disable transparency to see the background
     alwaysOnTop: true,
-    resizable: false,
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
       nodeIntegration: false,
@@ -23,23 +56,62 @@ function createWindow() {
     },
   });
 
-  // Allows clicking through the transparent areas to the game underneath
-  mainWindow.setIgnoreMouseEvents(true, { forward: true });
+  // mainWindow.setIgnoreMouseEvents(true, { forward: true }); // Keep disabled
 
   mainWindow.loadFile(path.join(__dirname, "../public/index.html"));
+  
+  // Open DevTools to help see what's happening
+  mainWindow.webContents.openDevTools({ mode: 'detach' });
 
   const monitor = new LogMonitor();
   monitor.start((event) => {
     mainWindow.webContents.send("draft-event", event);
   });
 
-  // IPC handlers
-  ipcMain.on("request-mock", () => {
-    mainWindow.webContents.send("draft-event", {
-      pack: ["123", "456", "789"],
-      pick: 1,
-      pickedCards: ["123", "456", "456", "789"] // Multiple cards for curve testing
+  ipcMain.handle("run-simulation", async (_event, setCode: string) => {
+    return new Promise((resolve, reject) => {
+      // Pass the set code as an argument to the python script
+      // Note: We'll need to update simulate_draft.py to accept arguments
+      exec(`python ../python/simulate_draft.py ${setCode}`, (error, stdout, stderr) => {
+        if (error) {
+          console.error(`Simulation error: ${error}`);
+          reject(error);
+          return;
+        }
+        console.log(`Simulation output: ${stdout}`);
+        resolve(stdout);
+      });
     });
+  });
+
+  // IPC handlers
+  ipcMain.on("request-mock", (_event, type: string) => {
+    let mockEvent: any = {};
+    
+    if (type === "TLA_P1P1") {
+      mockEvent = {
+        expansion: "TLA",
+        pick: 1,
+        pack: generateRandomPack("TLA"),
+        pickedCards: []
+      };
+    } else if (type === "ECL_P1P1") {
+      mockEvent = {
+        expansion: "ECL",
+        pick: 1,
+        pack: ["98567", "98885", ...generateRandomPack("ECL").slice(0, 12)],
+        pickedCards: []
+      };
+    } else {
+      mockEvent = {
+        expansion: "TLA",
+        pick: 2,
+        pack: generateRandomPack("TLA").slice(0, 13),
+        pickedCards: ["98640"]
+      };
+    }
+    
+    mainWindow.webContents.send("draft-event", mockEvent);
   });
 
   ipcMain.handle("load-artifact", async (_event, setName: string) => {

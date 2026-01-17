@@ -6,12 +6,14 @@ export interface DraftEvent {
   pack: string[];
   pick: number;
   pickedCards: string[];
+  expansion?: string;
 }
 
 export class LogMonitor {
   private logPath: string;
   private currentSize: number = 0;
   private watchInterval: NodeJS.Timeout | null = null;
+  private currentExpansion: string | undefined;
 
   constructor(customPath?: string) {
     this.logPath = customPath || this.getDefaultPath();
@@ -57,7 +59,11 @@ export class LogMonitor {
     }
 
     const stats = fs.statSync(this.logPath);
+    // For testing/simulation, if the file is very small or we just started, 
+    // we might want to read a bit of the past, but usually starting at current size is safest for "live" monitoring.
     this.currentSize = stats.size;
+
+    console.log(`Initial log size: ${this.currentSize}`);
 
     this.watchInterval = setInterval(() => {
       const newStats = fs.statSync(this.logPath);
@@ -78,9 +84,16 @@ export class LogMonitor {
     });
 
     stream.on('data', (chunk: string) => {
-      // MTGA logs can contain multiple JSON blobs per line or split across chunks
-      // We look for the specific Draft.Notify patterns
-      if (chunk.includes('Draft.Notify')) {
+      // 1. Detect Expansion
+      // Look for "Event_Join" or similar patterns: "PremierDraft_DSK_20240924"
+      const expansionMatch = /"InternalEventName":\s*"(?:PremierDraft|QuickDraft|TradDraft)_([A-Z0-9]+)_/i.exec(chunk);
+      if (expansionMatch) {
+        this.currentExpansion = expansionMatch[1].toUpperCase();
+        console.log(`Detected expansion: ${this.currentExpansion}`);
+      }
+
+      // 2. Parse Draft Events
+      if (chunk.includes('Draft.Notify') || chunk.includes('DraftPack')) {
         this.parseChunk(chunk, onDraftEvent);
       }
     });
@@ -89,19 +102,23 @@ export class LogMonitor {
   private parseChunk(chunk: string, onDraftEvent: (event: DraftEvent) => void) {
     const draftPackRegex = /"DraftPack":\s*\[(.*?)\]/g;
     const pickedCardsRegex = /"PickedCards":\s*\[(.*?)\]/g;
+    const pickNumberRegex = /"PickNumber":\s*(\d+)/g;
 
     let packMatch = draftPackRegex.exec(chunk);
     let pickedMatch = pickedCardsRegex.exec(chunk);
+    let pickNumberMatch = pickNumberRegex.exec(chunk);
 
     if (packMatch) {
       try {
         const cardIds = packMatch[1].split(',').map(id => id.trim().replace(/"/g, ''));
         const pickedIds = pickedMatch ? pickedMatch[1].split(',').map(id => id.trim().replace(/"/g, '')) : [];
+        const pickNumber = pickNumberMatch ? parseInt(pickNumberMatch[1]) : 0;
         
         onDraftEvent({
           pack: cardIds,
-          pick: 0,
-          pickedCards: pickedIds
+          pick: pickNumber,
+          pickedCards: pickedIds,
+          expansion: this.currentExpansion
         });
       } catch (e) {
         console.error('Failed to parse draft event', e);

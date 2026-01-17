@@ -1,4 +1,7 @@
 export interface CardMetrics {
+  name: string;
+  rarity: string;
+  url: string;
   zGih: number;
   zIwd: number;
   zAlsa: number;

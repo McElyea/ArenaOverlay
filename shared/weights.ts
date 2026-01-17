@@ -59,7 +59,7 @@ function calculateSynergy(metrics: CardMetrics, ctx: DraftContext): number {
   let boost = 1.0;
 
   switch (ctx.setCode) {
-    case "LOR": // Lorwyn Eclipsed - High Tribal Synergy
+    case "ECL": // Lorwyn Eclipsed - High Tribal Synergy
       // For every card in our pool that shares a type with this card, add a 2% boost
       const matchingTypes = ctx.pool.filter(p => 
         p.types.some(t => t !== "Creature" && metrics.types.includes(t))
@@ -67,7 +67,7 @@ function calculateSynergy(metrics: CardMetrics, ctx: DraftContext): number {
       boost += (matchingTypes * 0.02);
       break;
 
-    case "AVT": // Avatar - Ally Synergy only
+    case "TLA": // Avatar - Ally Synergy only
       if (metrics.types.includes("Ally")) {
         const alliesInPool = ctx.pool.filter(p => p.types.includes("Ally")).length;
         // Allies get exponentially better
