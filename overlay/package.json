@@ -1,0 +1,31 @@
+{
+  "name": "arena-overlay-client",
+  "version": "0.1.0",
+  "main": "dist/main.js",
+  "scripts": {
+    "build": "node esbuild.config.js",
+    "start": "npm run build && electron .",
+    "dev": "node esbuild.config.js --watch",
+    "dist": "npm run build && electron-builder"
+  },
+  "devDependencies": {
+    "electron": "^40.0.0",
+    "electron-builder": "^24.9.1",
+    "esbuild": "^0.27.2",
+    "typescript": "^5.9.3"
+  },
+  "build": {
+    "appId": "com.arena.overlay",
+    "win": {
+      "target": "portable"
+    },
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "public/**/*",
+      "package.json"
+    ]
+  }
+}

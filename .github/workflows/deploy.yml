@@ -1,0 +1,61 @@
+name: Build and Deploy
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  analyze_and_deploy_data:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          if [ -f python/requirements.txt ]; then pip install -r python/requirements.txt; fi
+          
+      - name: Run Analysis
+        run: python python/analyze.py
+        
+      - name: Deploy Artifacts to GitHub Pages
+        uses: peaceiris/actions-gh-pages@v3
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./artifacts
+          publish_branch: gh-pages
+
+  build_electron:
+    needs: analyze_and_deploy_data
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          
+      - name: Install Overlay Dependencies
+        working-directory: ./overlay
+        run: npm install
+        
+      - name: Build Overlay
+        working-directory: ./overlay
+        run: npm run build
+        
+      - name: Package Electron App
+        working-directory: ./overlay
+        run: npm run dist
+        
+      - name: Upload Release Artifact
+        uses: softprops/action-gh-release@v1
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          files: overlay/release/*.exe
